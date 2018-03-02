@@ -8,6 +8,7 @@ import kafka.javaapi.consumer.ConsumerConnector;
 import org.apache.storm.spout.SpoutOutputCollector;
 import org.apache.storm.task.TopologyContext;
 import org.apache.storm.topology.OutputFieldsDeclarer;
+import org.apache.storm.topology.base.BaseRichSpout;
 import org.apache.storm.tuple.Fields;
 import org.apache.storm.tuple.Values;
 import org.apache.storm.utils.Utils;
@@ -25,7 +26,7 @@ import java.util.concurrent.ArrayBlockingQueue;
  * @author yangfan
  * @date 2018/03/02
  */
-public class AccessLogKafkaSpout {
+public class AccessLogKafkaSpout extends BaseRichSpout {
 
     private SpoutOutputCollector collector;
 
@@ -33,8 +34,6 @@ public class AccessLogKafkaSpout {
 
     public void open(Map conf, TopologyContext context, SpoutOutputCollector collector) {
         this.collector = collector;
-
-
         startKafkaConsumer();
     }
 
