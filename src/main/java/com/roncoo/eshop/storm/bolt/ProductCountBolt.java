@@ -40,12 +40,11 @@ public class ProductCountBolt extends BaseRichBolt {
     }
 
     private void initTaskId(int taskId) {
-        String path = "/taskid-list";
 
 
-        zkSession.acquireDistributedLock(path);
+        zkSession.acquireDistributedLock();
 
-        String taskIdList = zkSession.getNodeData(path);
+        String taskIdList = zkSession.getNodeData();
 
         if (!"".equals(taskIdList)) {
             taskIdList += "," + taskId;
@@ -53,10 +52,10 @@ public class ProductCountBolt extends BaseRichBolt {
             taskIdList += taskIdList;
         }
 
-        zkSession.setNodeData(path, taskIdList);
+        zkSession.setNodeData("taskid-list", taskIdList);
 
 
-        zkSession.releaseDistributedLock(path);
+        zkSession.releaseDistributedLock();
 
     }
 

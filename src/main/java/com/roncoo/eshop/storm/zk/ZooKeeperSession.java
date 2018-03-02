@@ -57,13 +57,13 @@ public class ZooKeeperSession {
 	 * 获取分布式锁
 	 * @param productId
 	 */
-	public void acquireDistributedLock(Long productId) {
-		String path = "/product-lock-" + productId;
+	public void acquireDistributedLock() {
+		String path = "/taskid-list-lock";
 	
 		try {
 			zookeeper.create(path, "".getBytes(), 
 					Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
-			System.out.println("success to acquire lock for product[id=" + productId + "]");  
+			System.out.println("success to acquire lock for taskid-list-lock");  
 		} catch (Exception e) {
 			// 如果那个商品对应的锁的node，已经存在了，就是已经被别人加锁了，那么就这里就会报错
 			// NodeExistsException
@@ -75,71 +75,12 @@ public class ZooKeeperSession {
 							Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
 				} catch (Exception e2) {
 					count++;
-					System.out.println("the " + count + " times try to acquire lock for product[id=" + productId + "]......");
+					System.out.println("the " + count + " times try to acquire lock for taskid-list-lock......");
 					continue;
 				}
-				System.out.println("success to acquire lock for product[id=" + productId + "] after " + count + " times try......");
+				System.out.println("success to acquire lock for taskid-list-lock after " + count + " times try......");
 				break;
 			}
-		}
-	}
-	
-	/**
-	 * 获取分布式锁
-	 * @param productId
-	 */
-	public void acquireDistributedLock(String path) {
-		try {
-			zookeeper.create(path, "".getBytes(), 
-					Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
-			System.out.println("success to acquire lock for " + path);  
-		} catch (Exception e) {
-			// 如果那个商品对应的锁的node，已经存在了，就是已经被别人加锁了，那么就这里就会报错
-			// NodeExistsException
-			int count = 0;
-			while(true) {
-				try {
-					Thread.sleep(1000); 
-					zookeeper.create(path, "".getBytes(), 
-							Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
-				} catch (Exception e2) {
-					count++;
-					System.out.println("the " + count + " times try to acquire lock for " + path + "......");
-					continue;
-				}
-				System.out.println("success to acquire lock for " + path + " after " + count + " times try......");
-				break;
-			}
-		}
-	}
-	
-	/**
-	 * 获取分布式锁
-	 * @param productId
-	 */
-	public boolean acquireFastFailedDistributedLock(String path) {
-		try {
-			zookeeper.create(path, "".getBytes(), 
-					Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
-			System.out.println("success to acquire lock for " + path);  
-			return true;
-		} catch (Exception e) {
-			System.out.println("fail to acquire lock for " + path);  
-		}
-		return false;
-	}
-	
-	/**
-	 * 释放掉一个分布式锁
-	 * @param productId
-	 */
-	public void releaseDistributedLock(Long productId) {
-		String path = "/product-lock-" + productId;
-		try {
-			zookeeper.delete(path, -1); 
-			System.out.println("release the lock for product[id=" + productId + "]......");  
-		} catch (Exception e) {
-			e.printStackTrace();
 		}
 	}
 	
@@ -147,18 +88,19 @@ public class ZooKeeperSession {
 	 * 释放掉一个分布式锁
 	 * @param productId
 	 */
-	public void releaseDistributedLock(String path) {
+	public void releaseDistributedLock() {
+		String path = "/taskid-list-lock";
 		try {
 			zookeeper.delete(path, -1); 
-			System.out.println("release the lock for " + path + "......");  
+			System.out.println("release the lock for taskid-list-lock......");  
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
 	}
 	
-	public String getNodeData(String path) {
+	public String getNodeData() {
 		try {
-			return new String(zookeeper.getData(path, false, new Stat())); 
+			return new String(zookeeper.getData("/taskid-list", false, new Stat()));  
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
