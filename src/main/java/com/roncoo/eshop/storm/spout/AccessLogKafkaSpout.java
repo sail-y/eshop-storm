@@ -12,6 +12,8 @@ import org.apache.storm.topology.base.BaseRichSpout;
 import org.apache.storm.tuple.Fields;
 import org.apache.storm.tuple.Values;
 import org.apache.storm.utils.Utils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.List;
@@ -27,6 +29,8 @@ import java.util.concurrent.ArrayBlockingQueue;
  * @date 2018/03/02
  */
 public class AccessLogKafkaSpout extends BaseRichSpout {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(AccessLogKafkaSpout.class);
 
     private SpoutOutputCollector collector;
 
@@ -51,7 +55,7 @@ public class AccessLogKafkaSpout extends BaseRichSpout {
         ConsumerConnector consumerConnector = Consumer.createJavaConsumerConnector(consumerConfig);
 
 
-        Map<String, Integer> topicCountMap = new HashMap<String, Integer>();
+        Map<String, Integer> topicCountMap = new HashMap<>();
         topicCountMap.put(topic, 1);
 
         Map<String, List<KafkaStream<byte[], byte[]>>> consumerMap = consumerConnector.createMessageStreams(topicCountMap);
@@ -75,7 +79,7 @@ public class AccessLogKafkaSpout extends BaseRichSpout {
             ConsumerIterator<byte[], byte[]> it = kafkaStream.iterator();
             while (it.hasNext()) {
                 String message = new String(it.next().message());
-
+                LOGGER.info("【AccessLogKafkaSpout中的Kafka消费者接收到一条日志】message=" + message);
                 try {
                     queue.put(message);
                 } catch (InterruptedException e) {
@@ -91,6 +95,7 @@ public class AccessLogKafkaSpout extends BaseRichSpout {
         if (queue.size() > 0) {
             try {
                 String message = queue.take();
+                LOGGER.info("【AccessLogKafkaSpout发射出去一条日志】message=" + message);
                 collector.emit(new Values(message));
             } catch (InterruptedException e) {
                 e.printStackTrace();

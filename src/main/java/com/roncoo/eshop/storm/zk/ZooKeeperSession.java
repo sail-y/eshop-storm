@@ -2,12 +2,9 @@ package com.roncoo.eshop.storm.zk;
 
 import java.util.concurrent.CountDownLatch;
 
-import org.apache.zookeeper.CreateMode;
-import org.apache.zookeeper.WatchedEvent;
-import org.apache.zookeeper.Watcher;
+import org.apache.zookeeper.*;
 import org.apache.zookeeper.Watcher.Event.KeeperState;
 import org.apache.zookeeper.ZooDefs.Ids;
-import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.data.Stat;
 
 /**
@@ -26,7 +23,7 @@ public class ZooKeeperSession {
 		// 所以要给一个监听器，说告诉我们什么时候才是真正完成了跟zk server的连接
 		try {
 			this.zookeeper = new ZooKeeper(
-					"192.168.31.187:2181,192.168.31.19:2181,192.168.31.227:2181", 
+					"192.168.2.201:2181,192.168.2.201:2181,192.168.2.201:2181",
 					50000, 
 					new ZooKeeperWatcher());
 			// 给一个状态CONNECTING，连接中
@@ -55,7 +52,6 @@ public class ZooKeeperSession {
 	
 	/**
 	 * 获取分布式锁
-	 * @param productId
 	 */
 	public void acquireDistributedLock() {
 		String path = "/taskid-list-lock";
@@ -86,7 +82,6 @@ public class ZooKeeperSession {
 	
 	/**
 	 * 释放掉一个分布式锁
-	 * @param productId
 	 */
 	public void releaseDistributedLock() {
 		String path = "/taskid-list-lock";
@@ -114,7 +109,16 @@ public class ZooKeeperSession {
 			e.printStackTrace();
 		}
 	}
-	
+
+	public void createNode(String path) {
+		try {
+			zookeeper.create(path, "".getBytes(),
+					Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+		} catch (Exception e) {
+
+		}
+	}
+
 	/**
 	 * 建立zk session的watcher
 	 * @author Administrator
