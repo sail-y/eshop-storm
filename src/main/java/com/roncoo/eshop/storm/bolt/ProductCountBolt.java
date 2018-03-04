@@ -3,6 +3,10 @@ package com.roncoo.eshop.storm.bolt;
 import com.alibaba.fastjson.JSON;
 import com.roncoo.eshop.storm.http.HttpClientUtils;
 import com.roncoo.eshop.storm.zk.ZooKeeperSession;
+import org.apache.http.NameValuePair;
+import org.apache.http.client.utils.URLEncodedUtils;
+import org.apache.http.message.BasicNameValuePair;
+import org.apache.http.protocol.HTTP;
 import org.apache.storm.task.OutputCollector;
 import org.apache.storm.task.TopologyContext;
 import org.apache.storm.topology.OutputFieldsDeclarer;
@@ -33,6 +37,7 @@ public class ProductCountBolt extends BaseRichBolt {
 
     public void prepare(Map stormConf, TopologyContext context, OutputCollector collector) {
         new Thread(new ProductCountThread()).start();
+        new Thread(new HotProductFindThread()).start();
         taskId = context.getThisTaskId();
         zkSession = ZooKeeperSession.getInstance();
 
@@ -53,7 +58,7 @@ public class ProductCountBolt extends BaseRichBolt {
 
         LOGGER.info("【ProductCountBolt获取到taskid list】taskidList=" + taskIdList);
 
-        if(!"".equals(taskIdList)) {
+        if (!"".equals(taskIdList)) {
             taskIdList += "," + taskId;
         } else {
             taskIdList += taskId;
@@ -98,39 +103,45 @@ public class ProductCountBolt extends BaseRichBolt {
                 LOGGER.info("【HotProductFindThread计算出一份排序后的商品访问次数列表】 productCountListJSON=" + productCountListJSON);
 
 
-                int percent5 = (int)Math.floor(productCountList.size() * 0.05);
+                int percent5 = productCountList.size() - (int) Math.floor(productCountList.size() * 0.95);
 
                 // 计算95%商品访问次数的平均值
                 double avgCount = productCountList.stream().skip(percent5).mapToLong(Map.Entry::getValue).average().orElse(0.0);
-
-
-
-
-
+                LOGGER.info("【HotProductFindThread】计算出后95%访问次数的平均值 avgCount=" + avgCount);
 
                 hotProductIdList = productCountList.stream()
                         .filter(m -> m.getValue() > 10 * avgCount)
                         .map(Map.Entry::getKey)
-                        .peek(pId -> {
-                            // 将缓存热点数据推送到流量分发的nginx中
-                            String distributeURL = "http://192.168.2.203/hot?productId=" + pId;
-                            HttpClientUtils.sendGetRequest(distributeURL);
+                        .peek(productId -> {
 
-                            // 将缓存热点对应商品发送到缓存服务去获取
-                            String cacheServiceURL = "http://localhost:8080/getProductInfo?productId=" + pId;
-                            String response = HttpClientUtils.sendGetRequest(cacheServiceURL);
+                            if (!lastTimeHotProductList.contains(productId)) {
 
-                            String[] appNginxUrls = new String[]{
-                                    "http://192.168.2.201/hot?productId=" + pId + "&productInfo=" + response,
-                                    "http://192.168.2.202/hot?productId=" + pId + "&productInfo=" + response
-                            };
-                            // 将获取到的换成你数据推送到nginx服务上去
-                            for (String appNginxUrl : appNginxUrls) {
-                                HttpClientUtils.sendGetRequest(appNginxUrl);
+                                LOGGER.info("【HotProductFindThread】 发现一个新的热点 productId=" + productId);
+
+                                // 将缓存热点数据推送到流量分发的nginx中
+                                String distributeURL = "http://192.168.2.203/hot?productId=" + productId;
+                                HttpClientUtils.sendGetRequest(distributeURL);
+
+                                // 将缓存热点对应商品发送到缓存服务去获取
+                                String cacheServiceURL = "http://192.168.2.172:8080/getProductInfo?productId=" + productId;
+                                String response = HttpClientUtils.sendGetRequest(cacheServiceURL);
+
+                                List<NameValuePair> params = new ArrayList<>();
+                                params.add(new BasicNameValuePair("productInfo", response));
+                                String productInfo = URLEncodedUtils.format(params, HTTP.UTF_8);
+
+                                String[] appNginxUrls = new String[]{
+                                        "http://192.168.2.201/hot?productId=" + productId + "&" + productInfo,
+                                        "http://192.168.2.202/hot?productId=" + productId + "&" + productInfo
+                                };
+                                // 将获取到的换成你数据推送到nginx服务上去
+                                for (String appNginxUrl : appNginxUrls) {
+                                    LOGGER.info(appNginxUrl);
+                                    HttpClientUtils.sendGetRequest(appNginxUrl);
+                                }
                             }
                         })
                         .collect(Collectors.toList());
-
 
 
                 if (lastTimeHotProductList.size() > 0) {
@@ -140,14 +151,17 @@ public class ProductCountBolt extends BaseRichBolt {
                             String url = "http://192.168.2.203/cancelHot?productId=" + productId;
                             HttpClientUtils.sendGetRequest(url);
 
+                            LOGGER.info("【HotProductFindThread】 发现一个热点消失了 productId=" + productId);
+
                         }
                     }
                 }
 
 
-
                 lastTimeHotProductList = hotProductIdList;
+                LOGGER.info("【HotProductFindThread】 保存上次热点数据 lastTimeHotProductList=" + JSON.toJSONString(lastTimeHotProductList));
 
+                Utils.sleep(5000);
             }
         }
     }
