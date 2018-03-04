@@ -1,6 +1,7 @@
 package com.roncoo.eshop.storm.bolt;
 
 import com.alibaba.fastjson.JSON;
+import com.roncoo.eshop.storm.http.HttpClientUtils;
 import com.roncoo.eshop.storm.zk.ZooKeeperSession;
 import org.apache.storm.task.OutputCollector;
 import org.apache.storm.task.TopologyContext;
@@ -65,6 +66,92 @@ public class ProductCountBolt extends BaseRichBolt {
         zkSession.releaseDistributedLock();
 
     }
+
+
+    private class HotProductFindThread implements Runnable {
+
+        List<Map.Entry<Long, Long>> productCountList = new ArrayList<>();
+        List<Long> lastTimeHotProductList = new ArrayList<>();
+        List<Long> hotProductIdList = new ArrayList<>();
+
+
+        @Override
+        public void run() {
+            while (true) {
+                // 1. 将LRUMap中的数据按照访问次数进行全局的排序
+                // 2. 计算95%的商品访问次数的平均值
+                // 3. 遍历排序后的商品访问次数，降序
+                // 4. 如果某个商品是平均访问量的10倍以上，就认为是缓存的热点
+                if (productCountMap.size() == 0) {
+                    Utils.sleep(100);
+                    continue;
+                }
+
+                LOGGER.info("【ProductCountThread打印productCountMap的长度】size=" + productCountMap.size());
+
+                Comparator<Map.Entry<Long, Long>> comparator = Comparator.comparingLong(Map.Entry::getValue);
+                productCountList = productCountMap.entrySet().stream()
+                        .sorted(comparator.reversed())
+                        .collect(Collectors.toList());
+
+                String productCountListJSON = JSON.toJSONString(productCountList);
+                LOGGER.info("【HotProductFindThread计算出一份排序后的商品访问次数列表】 productCountListJSON=" + productCountListJSON);
+
+
+                int percent5 = (int)Math.floor(productCountList.size() * 0.05);
+
+                // 计算95%商品访问次数的平均值
+                double avgCount = productCountList.stream().skip(percent5).mapToLong(Map.Entry::getValue).average().orElse(0.0);
+
+
+
+
+
+
+                hotProductIdList = productCountList.stream()
+                        .filter(m -> m.getValue() > 10 * avgCount)
+                        .map(Map.Entry::getKey)
+                        .peek(pId -> {
+                            // 将缓存热点数据推送到流量分发的nginx中
+                            String distributeURL = "http://192.168.2.203/hot?productId=" + pId;
+                            HttpClientUtils.sendGetRequest(distributeURL);
+
+                            // 将缓存热点对应商品发送到缓存服务去获取
+                            String cacheServiceURL = "http://localhost:8080/getProductInfo?productId=" + pId;
+                            String response = HttpClientUtils.sendGetRequest(cacheServiceURL);
+
+                            String[] appNginxUrls = new String[]{
+                                    "http://192.168.2.201/hot?productId=" + pId + "&productInfo=" + response,
+                                    "http://192.168.2.202/hot?productId=" + pId + "&productInfo=" + response
+                            };
+                            // 将获取到的换成你数据推送到nginx服务上去
+                            for (String appNginxUrl : appNginxUrls) {
+                                HttpClientUtils.sendGetRequest(appNginxUrl);
+                            }
+                        })
+                        .collect(Collectors.toList());
+
+
+
+                if (lastTimeHotProductList.size() > 0) {
+                    for (Long productId : lastTimeHotProductList) {
+                        if (!hotProductIdList.contains(productId)) {
+                            // 缓存热点消失，发送一个一个http请求到nginx取消热点缓存的标识
+                            String url = "http://192.168.2.203/cancelHot?productId=" + productId;
+                            HttpClientUtils.sendGetRequest(url);
+
+                        }
+                    }
+                }
+
+
+
+                lastTimeHotProductList = hotProductIdList;
+
+            }
+        }
+    }
+
 
     /**
      * 每隔一分钟统计一次热点数据，放入zookeeper
